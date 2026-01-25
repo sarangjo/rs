@@ -30,6 +30,7 @@ from rs_grading import _get_assignment, send_lti_grades
 from runestone import cmap
 import pandas as pd
 import altair as alt
+import lxml
 
 from rs_practice import _get_qualified_questions
 
@@ -854,7 +855,6 @@ def grading():
         searchdict.items(), key=_safe_get_last
     )
     searchdict = OrderedDict(sd_by_student)
-            
 
     course = db(db.courses.id == auth.user.course_id).select().first()
     base_course = course.base_course
@@ -1745,6 +1745,16 @@ def htmlsrc():
             )
             if realq:
                 htmlsrc = realq.htmlsrc
+        elif res.question_type == "splice":
+            # If it's splice, we get an HTML snippet where the path to the iframe is relative to the
+            # textbook. This results in "invalid request" because the path doesn't resolve from the
+            # admin view. Thus, we need to do some URL hackery
+            logger.debug("Hello from splice land")
+            tree = etree.fromstring(res.htmlsrc)
+            iframe_el = tree.xpath("//iframe")[0]
+            iframe_el.set(
+                "src", f"/ns/books/published/{auth.user.course_name}/{iframe_el.get('src')}")
+            htmlsrc = etree.tostring(tree)
         else:
             htmlsrc = res.htmlsrc
     else:
@@ -1759,7 +1769,7 @@ def htmlsrc():
         htmlsrc = htmlsrc.decode("hex")
 
     result = {"htmlsrc": htmlsrc}
-    logger.debug("htmlsrc = {htmlsrc}")
+    logger.debug(f"htmlsrc = {htmlsrc}")
     if "data-attachment" in htmlsrc:
         # get the URL for the attachment, but we need the course, the user and the divid
         session = boto3.session.Session()
