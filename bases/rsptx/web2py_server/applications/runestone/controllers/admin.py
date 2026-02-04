@@ -24,8 +24,7 @@ import asyncio
 
 # Third Party library
 # -------------------
-import boto3
-import botocore  # for the S3 API
+import boto3, botocore  # for the S3 API
 from dateutil.parser import parse
 from rs_grading import _get_assignment, send_lti_grades
 from runestone import cmap
@@ -764,15 +763,12 @@ def course_students():
             searchdict[str(username)] = name
     return json.dumps(searchdict)
 
-
 def _safe_get_last(name):
     if name[1].strip() == "":
         return name[1]
     return name[1].split()[-1].lower()
 
 # Called when an instructor clicks on the grading tab
-
-
 @auth.requires(
     lambda: verifyInstructorStatus(auth.user.course_id, auth.user),
     requires_login=True,
@@ -859,6 +855,7 @@ def grading():
         searchdict.items(), key=_safe_get_last
     )
     searchdict = OrderedDict(sd_by_student)
+            
 
     course = db(db.courses.id == auth.user.course_id).select().first()
     base_course = course.base_course
@@ -2195,7 +2192,6 @@ def _add_q_meta_info(qrow):
 
     return res
 
-
 def _get_assignment_kind(assignment):
     """
     Returns the kind of assignment, based on the assignment's `from_source` field.
@@ -2206,8 +2202,7 @@ def _get_assignment_kind(assignment):
         return "Peer"
     else:
         return "Regular"
-
-
+    
 @auth.requires(
     lambda: verifyInstructorStatus(auth.user.course_id, auth.user),
     requires_login=True,
@@ -2255,7 +2250,7 @@ def get_assignment():
     assignment_data["is_peer"] = assignment_row.is_peer
     assignment_data["peer_async_visible"] = assignment_row.peer_async_visible
     assignment_data["kind"] = _get_assignment_kind(assignment_row)
-
+    
     # Still need to get:
     #  -- timed properties of assignment
     #  (See https://github.com/RunestoneInteractive/RunestoneServer/issues/930)
@@ -2575,7 +2570,7 @@ def _get_question_id(question_name, course_id, assignment_id=None):
     # pretext does not have numbers on the question names in the question table
     if not question or len(question) == 0:
         # check if question name starts with a number
-        # if it does then strip the leading numeric characters and search again
+        # if it does then strip the leading numeric characters and search again        
         if question_name[0].isdigit():
             # strip leading numbers and whitespace
             ql = question_name.split("/")
@@ -2616,7 +2611,7 @@ def _get_question_id(question_name, course_id, assignment_id=None):
         question = question[0]
     else:
         question = None
-
+    
     if question:
         return int(question.id)
     else:
