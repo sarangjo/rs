@@ -14,7 +14,8 @@ export const supportedExerciseTypesToEdit = [
   "matching",
   "fillintheblank",
   "clickablearea",
-  "selectquestion"
+  "selectquestion",
+  "iframe"
 ];
 
 export const supportedExerciseTypes = [
@@ -27,7 +28,8 @@ export const supportedExerciseTypes = [
   "poll",
   "shortanswer",
   "matching",
-  "selectquestion"
+  "selectquestion",
+  "iframe"
 ] as const;
 
 export type ExerciseType = (typeof supportedExerciseTypes)[number];
@@ -105,8 +107,10 @@ export type QuestionJSON = Partial<{
   selectedExistingDataFiles: SelectedDataFile[];
   // CodeTailor support
   enableCodeTailor: boolean;
-  parsonspersonalize: "solution-level" | "block-and-solution" | "";
+  parsonspersonalize: "movable" | "partial" | "";
   parsonsexample: string;
+  enableCodelens: boolean;
+  iframeSrc: string;
 }>;
 
 export type CreateExerciseFormType = Omit<Exercise, "question_json"> & QuestionJSON;
