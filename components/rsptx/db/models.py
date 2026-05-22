@@ -530,6 +530,12 @@ class AuthGroup(Base, IdMixin):
 
     role = Column(String(512))
     description = Column(Text)
+    memberships = relationship(
+        "AuthMembership",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class AuthMembership(Base, IdMixin):
@@ -537,6 +543,7 @@ class AuthMembership(Base, IdMixin):
 
     user_id = Column(ForeignKey("auth_user.id", ondelete="CASCADE"))
     group_id = Column(ForeignKey("auth_group.id", ondelete="CASCADE"))
+    group = relationship("AuthGroup", back_populates="memberships")
 
 
 class CourseInstructor(Base, IdMixin):
@@ -640,6 +647,9 @@ class Assignment(Base, IdMixin):
     released = Column(Web2PyBoolean, nullable=False)
     description = Column(Text)
     duedate = Column(DateTime, nullable=False)
+    updated_date = Column(DateTime, nullable=True)
+    visible_on = Column(DateTime, nullable=True)
+    hidden_on = Column(DateTime, nullable=True)
     visible = Column(Web2PyBoolean, nullable=False)
     threshold_pct = Column(Float(53))
     allow_self_autograde = Column(Web2PyBoolean)
@@ -678,6 +688,7 @@ class AssignmentQuestion(Base, IdMixin):
     activities_required = Column(
         Integer
     )  # only reading assignments will have this populated
+    use_llm = Column(Web2PyBoolean, server_default="F")
 
 
 AssignmentQuestionValidator: TypeAlias = sqlalchemy_to_pydantic(AssignmentQuestion)  # type: ignore

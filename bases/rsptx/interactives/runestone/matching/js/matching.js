@@ -61,9 +61,7 @@ export class MatchingProblem extends RunestoneBase {
         this.renderBoxes();
         this.attachEvents();
 
-        if (window.MathJax && MathJax.typesetPromise) {
-            MathJax.typesetPromise();
-        }
+        this.queueMathJax(this.containerDiv);
     }
 
     // required elements for a Runestone component
@@ -172,6 +170,10 @@ export class MatchingProblem extends RunestoneBase {
         const data = localStorage.getItem(this.divid);
         if (data) {
             const parsedData = JSON.parse(data);
+            if (parsedData.timestamp && parsedData.timestamp < eBookConfig.termStartDate) {
+                localStorage.removeItem(this.divid);
+                return;
+            }
             this.connections = parsedData.connections.map(conn => ({
                 fromBox: this.allBoxes.find(box => box.dataset.id === conn.from),
                 toBox: this.allBoxes.find(box => box.dataset.id === conn.to)
@@ -186,6 +188,7 @@ export class MatchingProblem extends RunestoneBase {
         }
     }
     setLocalStorage() {
+        const timeStamp = new Date();
         const data = {
             connections: this.connections.map(conn => ({
                 from: conn.fromBox.dataset.id,
@@ -194,7 +197,8 @@ export class MatchingProblem extends RunestoneBase {
             score: this.scorePercent,
             correctCount: this.correctCount,
             incorrectCount: this.incorrectCount,
-            missingCount: this.missingCount
+            missingCount: this.missingCount,
+            timestamp: timeStamp
         };
         localStorage.setItem(this.divid, JSON.stringify(data));
     }
@@ -496,6 +500,11 @@ export class MatchingProblem extends RunestoneBase {
         this.connections.length = 0;
         this.updateConnectionModel();
         if (this.ariaLive) this.ariaLive.textContent = "All connections have been cleared.";
+        this.logBookEvent( {
+            event: "matching_reset",
+            div_id: this.divid,
+            act: "reset all connections",
+        });
     }
 
     attachEvents() {
@@ -552,10 +561,6 @@ export class MatchingProblem extends RunestoneBase {
             });
         });
 
-        const gradeBtn = this.containerDiv.querySelector('.grade-button');
-        const resetBtn = this.containerDiv.querySelector('.reset-button');
-        if (gradeBtn) gradeBtn.addEventListener('click', () => this.gradeConnections());
-        if (resetBtn) resetBtn.addEventListener('click', () => this.resetConnections());
 
         window.addEventListener("resize", () => {
             this.connections.forEach(conn => {
@@ -604,7 +609,13 @@ export class MatchingProblem extends RunestoneBase {
         );
 
         if (this.startBox && endBox) this.createPermanentLine(this.startBox, endBox);
-
+        // 
+        console.log(`connected ${this.startBox.dataset.id ? this.startBox.dataset.id : "null"} to ${endBox.dataset.id ? endBox.dataset.id : "null"}`);
+        this.logBookEvent( {
+            event: "matching_connection",
+            div_id: this.divid,
+            act: `connected ${this.startBox.dataset.id ? this.startBox.dataset.id : "null"} to ${endBox.dataset.id ? endBox.dataset.id : "null"}`,
+        });
         this.startBox = null;
         document.removeEventListener("pointermove", this.updateTempLine);
         document.removeEventListener("pointerup", this.finishConnection);

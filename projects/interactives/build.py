@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import os
+import pathlib
 from rsptx.cl_utils.core import pushd
 import toml
 import json
@@ -17,8 +18,38 @@ else:
     VERSION = project["tool"]["poetry"]["version"]
 
 
+def rebuild_micro_parsons():
+    """Rebuild micro-parsons from local source if package.json points to a file: tarball.
+
+    Reads the micro-parsons entry from interactives/package.json.  If it is a
+    file: reference, resolves the source directory (the folder containing the
+    .tgz), rebuilds the package with `npm run build && npm pack`, and updates
+    the .tgz in place so the subsequent `npm install` picks up the fresh build.
+    """
+    pkg_json = pathlib.Path("../../bases/rsptx/interactives/package.json").resolve()
+    pkg = json.loads(pkg_json.read_text())
+    mp_ref = pkg.get("dependencies", {}).get("micro-parsons", "")
+    if not mp_ref.startswith("file:"):
+        print("micro-parsons is not a local file: reference — skipping rebuild")
+        return
+
+    # Resolve the path to the .tgz (may be absolute or relative to package.json)
+    tgz_path = pathlib.Path(mp_ref[len("file:"):])
+    if not tgz_path.is_absolute():
+        tgz_path = (pkg_json.parent / tgz_path).resolve()
+
+    src_dir = tgz_path.parent
+    print(f"Rebuilding micro-parsons from {src_dir} ...")
+    with pushd(str(src_dir)):
+        subprocess.run(["npm", "run", "build"], check=True)
+        subprocess.run(["npm", "pack"], check=True)
+    print("micro-parsons rebuilt successfully.")
+
+
 with pushd("../../bases/rsptx/interactives"):
     if "--dev" in sys.argv:
+        if "--micro-parsons" in sys.argv:
+            rebuild_micro_parsons()
         subprocess.run(["npm", "install"], check=True)
         debug = False
         if "--to" in sys.argv:
@@ -59,7 +90,8 @@ if "--fromroot" not in sys.argv:
 
 
 if sys.argv[1:] == ["--publish"]:
-    subprocess.run(["poetry", "publish"], check=True)
+    # Do not send to PYPI, just publish the .tgz to the CDN and update the author_server and rsmanage dependencies.  The .tgz is published to the CDN so that it can be used in the package.json for author_server and rsmanage without needing to publish to PYPI first.
+    #subprocess.run(["poetry", "publish"], check=True)
 
     with pushd("../../bases/rsptx/interactives/runestone"):
         subprocess.run(
@@ -99,8 +131,6 @@ if sys.argv[1:] == ["--publish"]:
             " ".join(["mv", f"dist-{VERSION}.tgz", "../jsdist"]), check=True, shell=True
         )
     with pushd("../author_server"):
-        subprocess.run(["poetry", "update", "runestone"], check=True)
         subprocess.run(["poetry", "update", "pretext"], check=True)
     with pushd("../rsmanage"):
-        subprocess.run(["poetry", "update", "runestone"], check=True)
         subprocess.run(["poetry", "update", "pretext"], check=True)

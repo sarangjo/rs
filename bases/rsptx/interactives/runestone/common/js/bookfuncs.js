@@ -29,6 +29,11 @@
 
  */
 
+import RunestoneBase from "./runestonebase.js";
+import { marked } from "marked";
+
+var rb = new RunestoneBase();
+
 //
 // Page decoration functions
 //
@@ -45,9 +50,9 @@ This page is not part of that assignment. Select a page to return to it:
 */
 function addReadingList() {
     let assignment_info_string = localStorage.getItem(`currentAssignmentInfo_${eBookConfig.course}`)
-        
+
     if (assignment_info_string && eBookConfig.readings) {
-        var top,bottom,active,page_name,exit_link,fst,snd, new_pos, path_parts, new_pos_link;
+        var top, bottom, active, page_name, exit_link, fst, snd, new_pos, path_parts, new_pos_link;
         var assignment_info = JSON.parse(assignment_info_string);
         let assignment_id = assignment_info.id;
         let assignment_name = assignment_info.name;
@@ -59,14 +64,14 @@ function addReadingList() {
         page_name = document.createElement("a");
         page_name.textContent = assignment_name;
         page_name.href = `/assignment/student/doAssignment?assignment_id=${assignment_id}`;
-        
+
         active.append(page_name);
 
         exit_link = document.createElement("a");
         exit_link.textContent = " Exit Assignment";
-        exit_link.href=window.location.pathname;
+        exit_link.href = window.location.pathname;
 
-        exit_link.addEventListener('click',function(event) {
+        exit_link.addEventListener('click', function (event) {
             localStorage.removeItem(`currentAssignmentInfo_${eBookConfig.course}`);
         });
 
@@ -102,13 +107,12 @@ function addReadingList() {
             var fst_lnk = document.createElement("a");
             //fst_lnk.className = "btn btn-lg reading-navigation prev-reading";
             fst_lnk.href = new_pos_link;
-            fst_lnk.textContent = `Back to page ${
-                position
-            } of ${num_readings}: ${reading_names[position-1]}.`;
+            fst_lnk.textContent = `Back to page ${position
+                } of ${num_readings}: ${reading_names[position - 1]}.`;
             txt.append(fst_lnk);
             fst.append(txt);
-            
-        } else if (position == 0){
+
+        } else if (position == 0) {
             fst = active.cloneNode(true);
             let txt = document.createElement("p");
             txt.textContent = `Page 1 of ${num_readings}.`;
@@ -120,7 +124,7 @@ function addReadingList() {
             let pageExercises = Object.keys(componentMap);
             if (pageExercises.length == 0) {
                 pageExercises = document.querySelectorAll("[data-component]");
-                pageExercises = Array.from(pageExercises).map(function(el) {
+                pageExercises = Array.from(pageExercises).map(function (el) {
                     return el.id;
                 })
             }
@@ -160,25 +164,24 @@ function addReadingList() {
             var snd_lnk = document.createElement("a");
             //snd_lnk.className = "btn btn-lg reading-navigation next-reading";
             snd_lnk.href = new_pos_link;
-            snd_lnk.textContent = `Continue to page ${
-                position + 2
-            } of ${num_readings}: ${reading_names[position+1]}`;
+            snd_lnk.textContent = `Continue to page ${position + 2
+                } of ${num_readings}: ${reading_names[position + 1]}`;
             let txt = document.createElement("p");
             txt.append(snd_lnk);
             snd.append(txt);
-            
+
         } else {
             snd = active.cloneNode(true);
             let txt = document.createElement("p");
             txt.textContent = "Notice: this page is not part of the assignment. To remove this warning click ";
             let exit_clone = exit_link.cloneNode(true);
 
-            exit_clone.addEventListener('click',function(event) {
+            exit_clone.addEventListener('click', function (event) {
                 localStorage.removeItem(`currentAssignmentInfo_${eBookConfig.course}`);
             });
             txt.append(exit_clone);
             snd.append(txt);
-            
+
 
         }
 
@@ -197,7 +200,7 @@ function addReadingList() {
         //bottom.style.backgroundColor = "var(--componentBgColor)"
         //bottom.style.borderColor = "var(--componentBorderColor)"
         //bottom.style.borderWidth = "1px"
-        
+
         //bottom.append(active.cloneNode(true));
         //bottom.append(fst.cloneNode(true));
         bottom.append(snd);
@@ -219,9 +222,9 @@ function addReadingList() {
         }
         const mainContent = document.getElementById("main-content");
         if (mainContent && snd) {
-            mainContent.insertBefore(top,mainContent.firstChild)
+            mainContent.insertBefore(top, mainContent.firstChild)
             mainContent.appendChild(bottom);
-            
+
         }
     }
 }
@@ -336,9 +339,12 @@ class PageProgressBar {
             // This handles the case where there are no activities on the page or
             //  where the user completed activities on the assignment page and now
             //  is viewing the reading page.
-            let completeActivities = this.total - 1; // subtract 1 for the page reading which is in total but not an activity
+            let completeActivities = this.total; // subtract 1 for the page reading which is in total but not an activity
             let requiredActivities =
-                this.assignment_spec.activities_required || 0;
+                this.assignment_spec.activities_required || 1;
+            if (this.assignment_spec.activities_required === null) {
+                this.assignment_spec.activities_required = this.possible; // if activities_required is null, then there are none on the page
+            }
             if (completeActivities >= requiredActivities) {
                 this.sendCompletedReadingScore().then(() => {
                     console.log("Reading score sent for page");
@@ -445,6 +451,396 @@ function getCookie(name) {
     if (parts.length === 2) return parts.pop().split(";").shift();
 }
 
+let studyCluesConversationId = -1;
+
+function appendStudyCluesMessage(messagesEl, role, text, isHtml = false) {
+    const bubble = document.createElement("div");
+    bubble.className = `studyclues-message ${role}`;
+    if (isHtml) {
+        bubble.innerHTML = text;
+    } else {
+        bubble.textContent = text;
+    }
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function createStudyCluesWidget() {
+    if (document.getElementById("studyclues-fab")) {
+        return;
+    }
+
+    const style = document.createElement("style");
+    style.textContent = `
+        #studyclues-fab {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 9999;
+            border: none;
+            border-radius: 9999px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: #2563eb;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        #studyclues-chat {
+            position: fixed;
+            right: 24px;
+            bottom: 78px;
+            z-index: 9999;
+            width: min(420px, calc(100vw - 32px));
+            height: min(520px, calc(100vh - 120px));
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.25);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #studyclues-chat.open {
+            display: flex;
+        }
+
+        .studyclues-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+            background: #f9fafb;
+        }
+
+        .studyclues-close {
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .studyclues-coach-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #4b5563;
+        }
+
+        .studyclues-coach-toggle input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 32px;
+            height: 18px;
+            border-radius: 9999px;
+            background: #d1d5db;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .studyclues-coach-toggle input[type="checkbox"]::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.2s;
+        }
+
+        .studyclues-coach-toggle input[type="checkbox"]:checked {
+            background: #2563eb;
+        }
+
+        .studyclues-coach-toggle input[type="checkbox"]:checked::after {
+            transform: translateX(14px);
+        }
+
+        .studyclues-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #f8fafc;
+        }
+
+        .studyclues-message {
+            max-width: 85%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .studyclues-message.user {
+            margin-left: auto;
+            background: #dbeafe;
+            border: 1px solid #bfdbfe;
+        }
+
+        .studyclues-message.assistant {
+            margin-right: auto;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+        }
+
+        .studyclues-message.studyclues-loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        .studyclues-spinner {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .studyclues-spinner-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #6b7280;
+            opacity: 0.35;
+            animation: studyclues-dot-pulse 1s infinite ease-in-out;
+        }
+
+        .studyclues-spinner-dot:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .studyclues-spinner-dot:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        @keyframes studyclues-dot-pulse {
+            0%,
+            80%,
+            100% {
+                opacity: 0.35;
+                transform: scale(1);
+            }
+            40% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        .studyclues-inputbar {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            border-top: 1px solid #e5e7eb;
+            background: #fff;
+        }
+
+        .studyclues-inputbar input {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+
+        .studyclues-inputbar button {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #fff;
+            background: #2563eb;
+            font-weight: 600;
+        }
+    `;
+    document.head.appendChild(style);
+
+    const button = document.createElement("button");
+    button.id = "studyclues-fab";
+    button.textContent = "StudyClues Chat";
+
+    const chat = document.createElement("div");
+    chat.id = "studyclues-chat";
+    chat.innerHTML = `
+        <div class="studyclues-header">
+            <span>StudyClues</span>
+            <label class="studyclues-coach-toggle">
+                <input type="checkbox" id="studyclues-coach-mode" checked />
+                Coach Mode
+            </label>
+            <button class="studyclues-close" aria-label="Close chat">✕</button>
+        </div>
+        <div class="studyclues-messages"></div>
+        <div class="studyclues-inputbar">
+            <input type="text" placeholder="Ask a question about this course..." />
+            <button type="button">Send</button>
+        </div>
+    `;
+
+    document.body.appendChild(button);
+    document.body.appendChild(chat);
+
+    const closeBtn = chat.querySelector(".studyclues-close");
+    const messagesEl = chat.querySelector(".studyclues-messages");
+    const inputEl = chat.querySelector(".studyclues-inputbar input");
+    const sendBtn = chat.querySelector(".studyclues-inputbar button");
+    const coachToggle = chat.querySelector("#studyclues-coach-mode");
+
+    let coachMode = coachToggle.checked;
+    coachToggle.addEventListener("change", () => {
+        coachMode = coachToggle.checked;
+    });
+
+    const toggleChat = () => {
+        chat.classList.toggle("open");
+        if (chat.classList.contains("open")) {
+            inputEl.focus();
+        }
+    };
+
+    const sendMessage = async () => {
+        let query = inputEl.value.trim();
+        if (!query) {
+            return;
+        }
+        var sectionInfo = "";
+        // find the section title on the page to include in the initial query
+        if (document.querySelector("body.pretext")) {
+            let section = document.querySelector('section.section');
+            let sectionTitle = section.querySelector('span.title').innerText;
+            let sectionNumber = section.querySelector('span.codenumber').innerText;
+            sectionInfo = `${sectionNumber} ${sectionTitle}`;
+        } else {
+            let sectionSpan = document.querySelector("span.section-number");
+            if (sectionSpan) {
+                sectionInfo = sectionSpan.parentElement.innerText.trim();
+            }
+        }
+        if (studyCluesConversationId === -1) {
+            if (sectionInfo) {
+                query = `Regarding section "${sectionInfo}": ${query}`;
+            } 
+        }
+        rb.logBookEvent({ event: "studyclues_query", act: `query: ${query}`, div_id: `${sectionInfo}` });
+        appendStudyCluesMessage(messagesEl, "user", query); // todo: make this conditional on being a book page and on the book being one of the supported books
+        inputEl.value = "";
+        sendBtn.disabled = true;
+
+        const loadingBubble = document.createElement("div");
+        loadingBubble.className =
+            "studyclues-message assistant studyclues-loading";
+        loadingBubble.innerHTML =
+            'Thinking <span class="studyclues-spinner"><span class="studyclues-spinner-dot"></span><span class="studyclues-spinner-dot"></span><span class="studyclues-spinner-dot"></span></span>';
+        messagesEl.appendChild(loadingBubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+
+        try {
+            const response = await fetch(
+                `/assignment/student/studyclues_query`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({
+                        query,
+                        conversation_id: studyCluesConversationId,
+                        coachMode,
+                    }),
+                },
+            );
+
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const payload = await response.json();
+            const detail = payload?.detail || {};
+            const studycluesResponse = detail?.response || {};
+            const llmResponse = studycluesResponse?.llm_response;
+            const references = studycluesResponse?.references || {};
+
+            if (typeof detail.conversation_id === "number") {
+                studyCluesConversationId = detail.conversation_id;
+            }
+
+            const markdownResponse = (llmResponse || "No response available from StudyClues.").replace(
+                /\[([^\]]+)\]\(([^)]+)\)/g,
+                (match, text, key) => {
+                    const url = references[key]?.content_url;
+                    return url ? `[${text}](${url})` : match;
+                },
+            );
+            const formattedResponse = marked.parse(markdownResponse);
+
+            appendStudyCluesMessage(
+                messagesEl,
+                "assistant",
+                formattedResponse,
+                true,
+            );
+        } catch (err) {
+            appendStudyCluesMessage(
+                messagesEl,
+                "assistant",
+                "Sorry, StudyClues is unavailable right now. Please try again.",
+            );
+            console.error("StudyClues chat error:", err);
+        } finally {
+            loadingBubble.remove();
+            sendBtn.disabled = false;
+            inputEl.focus();
+        }
+    };
+
+    button.addEventListener("click", toggleChat);
+    closeBtn.addEventListener("click", toggleChat);
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter") {
+            evt.preventDefault();
+            sendMessage();
+        }
+    });
+}
+
+function shouldShowStudyCluesWidget() {
+    if (!(location.pathname.includes("/ns/books/") || location.pathname.includes("doAssignment"))) {
+        return false;
+    }
+
+
+    const enabledBasecourses = ["csawesome2", "py4e-int", "thinkcspy", "httlacs", "PTXSB", "cppds2"];
+    const enabledCourses = ["SI201-W26-MW", "SI201-W26-TTh", "DukeCS101SP26", "mcd-csa-schoology", "mcd-csa-canvas", "csawesome2-MOOC", "test_py4e-int_api", "bc_cppds_s26", "Test-py4e-int", "virginiatech_py4e-int_spring26"];
+    const host = window.location.hostname;
+
+    if (host === "localhost") {
+        return enabledBasecourses.includes(eBookConfig.basecourse);
+    }
+
+    if (host === "runestone.academy") {
+        return enabledCourses.includes(eBookConfig.course);
+    }
+
+    return false;
+}
+
 async function handlePageSetup() {
     var mess;
     if (eBookConfig.useRunestoneServices) {
@@ -516,6 +912,11 @@ async function handlePageSetup() {
         }
         document.dispatchEvent(new Event("runestone:login"));
         addReadingList();
+        // Only show the StudyClues widget for certain base courses and when the path includes "/ns/books/".
+        // This is a temporary measure to limit the widget to courses that are known to work well with it and to avoid showing it on non-book pages where it may not be as useful.
+        if (shouldShowStudyCluesWidget()) {
+            createStudyCluesWidget();
+        }
         // Avoid the timedRefresh on the grading page.
         if (
             window.location.pathname.indexOf("/admin/grading") == -1 &&

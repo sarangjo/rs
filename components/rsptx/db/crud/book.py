@@ -4,6 +4,7 @@ from sqlalchemy import select, update, distinct
 from ..models import (
     Chapter,
     ChapterValidator,
+    Courses,
     SubChapter,
     SubChapterValidator,
     Question,
@@ -105,7 +106,7 @@ async def get_book_subchapters(course_name: str) -> List[SubChapterValidator]:
         .order_by(Chapter.chapter_num, SubChapter.sub_chapter_num)
     )
     async with async_session() as session:
-        print(query)
+        rslogger.debug(f"{query=}")
         res = await session.execute(query)
         return [SubChapterValidator.from_orm(x) for x in res.scalars().fetchall()]
 
@@ -137,11 +138,16 @@ async def fetch_page_activity_counts(
         page_divids = await session.execute(query)
     rslogger.debug(f"PDVD {page_divids}")
     div_counts = {q.name: 0 for q in page_divids.scalars()}
-    query = select(distinct(Useinfo.div_id)).where(
-        where_clause_common
-        & (Question.name == Useinfo.div_id)
-        & (Useinfo.course_id == course_name)
-        & (Useinfo.sid == username)
+    query = (
+        select(distinct(Useinfo.div_id))
+        .join(Courses, Courses.course_name == Useinfo.course_id)
+        .where(
+            where_clause_common
+            & (Question.name == Useinfo.div_id)
+            & (Useinfo.course_id == course_name)
+            & (Useinfo.sid == username)
+            & (Useinfo.timestamp > Courses.term_start_date)
+        )
     )
     async with async_session() as session:
         sid_counts = await session.execute(query)

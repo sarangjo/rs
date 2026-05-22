@@ -58,8 +58,11 @@ console = Console()
     "--clean", is_flag=True, help="Remove all containers and images before starting"
 )
 @click.option("--skip-pre", is_flag=True, default=False, help="Skip pre-build steps")
+@click.option(
+    "--skip-tests", is_flag=True, default=False, help="Skip running tests before build"
+)
 @pass_config
-def cli(config, verbose, all, core, service, clean, skip_pre):
+def cli(config, verbose, all, core, service, clean, skip_pre, skip_tests):
     """
     Build the wheels and Docker containers needed for this application
     You can control which parts of the pipeline to run and which services to build or
@@ -85,6 +88,10 @@ def cli(config, verbose, all, core, service, clean, skip_pre):
         config.skip_pre = True
     else:
         config.skip_pre = False
+    if skip_tests:
+        config.skip_tests = True
+    else:
+        config.skip_tests = False
     if clean:
         clean_all()
 
@@ -890,11 +897,13 @@ def full(ctx, config):
 @click.pass_context
 def dev(ctx, config):
     """Build the wheels, images, and restart the services"""
+    ctx.invoke(test)
     ctx.invoke(wheel)
     ctx.invoke(image)
     ctx.invoke(restart)
 
-# This command should be used when you pull new code from github and want to rebuild and make 
+
+# This command should be used when you pull new code from github and want to rebuild and make
 # sure you are using the latest database schema.  Many people forget to run migrations
 # after pulling new code.
 @cli.command()
@@ -902,10 +911,52 @@ def dev(ctx, config):
 @click.pass_context
 def sync(ctx, config):
     """Build the wheels, images, check the database, and restart the services"""
+    ctx.invoke(test)
     ctx.invoke(wheel)
     ctx.invoke(image)
     ctx.invoke(checkdb)
     ctx.invoke(restart)
+
+
+@cli.command()
+@pass_config
+def test(config):
+    """Run format checks and tests"""
+    if getattr(config, "skip_tests", False):
+        console.print("Skipping tests and format checks", style="bold yellow")
+        return
+    checks = [
+        ["black", "--check", "--config", "pyproject.toml", "bases"],
+        ["black", "--check", "--config", "pyproject.toml", "components"],
+    ]
+
+    for command_list in checks:
+        console.print(f"Running {' '.join(command_list)}...", style="bold")
+        ret = subprocess.run(command_list, capture_output=True)
+        if ret.returncode != 0:
+            console.print(
+                f"Command failed: {' '.join(command_list)}",
+                style="bold red",
+            )
+            if ret.stdout:
+                console.print(ret.stdout.decode(stdout_err_encoding))
+            if ret.stderr:
+                console.print(ret.stderr.decode(stdout_err_encoding))
+            exit(1)
+
+    console.print("Running pytest in test with SERVER_CONFIG=test...", style="bold")
+    test_env = os.environ.copy()
+    test_env["SERVER_CONFIG"] = "test"
+    ret = subprocess.run(["pytest"], cwd="test", env=test_env, capture_output=True)
+    if ret.returncode != 0:
+        console.print("Pytest failed", style="bold red")
+        if ret.stdout:
+            console.print(ret.stdout.decode(stdout_err_encoding))
+        if ret.stderr:
+            console.print(ret.stderr.decode(stdout_err_encoding))
+        exit(1)
+
+    console.print("All checks passed", style="green")
 
 
 # Bake
@@ -928,6 +979,8 @@ def bake(ctx, config, version):
         with open(".last_version", "w") as f:
             f.write(version)
     # we need to build the wheels first
+
+    ctx.invoke(test)
     ctx.invoke(wheel)
     for service in config.ym["services"]:
         if service == "nginx_dstart_dev":

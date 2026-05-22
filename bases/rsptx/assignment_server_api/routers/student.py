@@ -16,6 +16,7 @@ import datetime
 from typing import Optional
 import json
 import re
+import requests
 
 # Third-party imports
 # -------------------
@@ -46,6 +47,7 @@ from rsptx.db.crud import (
 from rsptx.grading_helpers.core import check_for_exceptions
 
 from rsptx.db.models import GradeValidator, UseinfoValidation, CoursesValidator
+from rsptx.db.crud.assignment import is_assignment_visible_to_students
 from rsptx.auth.session import auth_manager, is_instructor
 from rsptx.templates import template_folder
 from rsptx.response_helpers.core import (
@@ -93,7 +95,9 @@ async def get_assignments(
         # if the user is an instructor, we need to show all assignments
         assignments = await fetch_assignments(course.course_name, fetch_all=True)
     else:
-        assignments = await fetch_assignments(course.course_name)
+        # Use is_visible=True to apply SQL-level scheduled visibility filtering
+        # (respects visible_on and hidden_on dates)
+        assignments = await fetch_assignments(course.course_name, is_visible=True)
     # fetch all deadline exceptions for the user
     accommodations = await fetch_deadline_exception(
         course.id, user.username, fetch_all=True
@@ -101,7 +105,18 @@ async def get_assignments(
     # filter assignments based on deadline exceptions
     assignment_ids = [a.assignment_id for a in accommodations]
     if not user_is_instructor:
-        assignments = [a for a in assignments if a.visible or a.id in assignment_ids]
+        # Also include assignments the student has deadline exceptions for,
+        # even if they are not currently visible via scheduled dates
+        if assignment_ids:
+            all_assignments = await fetch_assignments(
+                course.course_name, fetch_all=True
+            )
+            exception_assignments = [
+                a
+                for a in all_assignments
+                if a.id in assignment_ids and not is_assignment_visible_to_students(a)
+            ]
+            assignments = list(assignments) + exception_assignments
 
     parsed_js = json.loads(RS_info) if RS_info else {}
     timezoneoffset = parsed_js.get("tz_offset", None)
@@ -110,20 +125,33 @@ async def get_assignments(
         deadline = assignment.duedate
         if timezoneoffset:
             deadline = deadline + datetime.timedelta(hours=float(timezoneoffset))
-            return (deadline < canonical_utcnow(), abs((deadline - canonical_utcnow()).total_seconds()))
+            return (
+                deadline < canonical_utcnow(),
+                abs((deadline - canonical_utcnow()).total_seconds()),
+            )
         else:
-            return (assignment.duedate < canonical_utcnow(), abs((assignment.duedate - canonical_utcnow()).total_seconds()))    
+            return (
+                assignment.duedate < canonical_utcnow(),
+                abs((assignment.duedate - canonical_utcnow()).total_seconds()),
+            )
 
     # Sort assignments: upcoming assignments first (closest to current date), past due assignments last
     now = canonical_utcnow()
-    assignments.sort(
-        key=sort_key
-    )
+    assignments.sort(key=sort_key)
     stats_list = await fetch_all_assignment_stats(course.course_name, user.id)
     stats = {}
     for s in stats_list:
         stats[s.assignment] = s
     rslogger.debug(f"stats: {stats}")
+
+    # Build a visibility map for the template.
+    # For instructors: enables the "Student View: Hide Hidden Assignments" toggle
+    # For students: ensures scheduled assignments (visible_on/hidden_on) get correct CSS class
+    # This takes into account visible_on and hidden_on dates, not just the visible flag
+    visibility_map = {}
+    for a in assignments:
+        visibility_map[a.id] = is_assignment_visible_to_students(a)
+
     return templates.TemplateResponse(
         "assignment/student/chooseAssignment.html",
         {
@@ -136,6 +164,7 @@ async def get_assignments(
             "student_page": True,
             "lti1p1": is_lti1p1_course,
             "now": now,
+            "visibility_map": visibility_map,
         },
     )
 
@@ -148,6 +177,111 @@ class UpdateStatusRequest(BaseModel):
 
     assignment_id: int
     new_state: Optional[str] = None
+
+
+def get_studyclues_book_id(course: CoursesValidator) -> str:
+    """Get the StudyClues book ID for a given course.
+
+    :param course: The course object.
+    :type course: CoursesValidator
+    :return: The StudyClues book ID.
+    :rtype: str
+    """
+    # This is a placeholder implementation. You should replace this with your actual logic to get the book ID.
+    # For example, you might have a mapping of course names to book IDs.
+    course_to_book_id = {
+        "csawesome2": 28,
+        "httlacs": 29,
+        "py4e-int": 30,
+        "PTXSB": 28,
+        "cppds2": 35,
+        "thinkcspy": 36,
+        # Add more mappings as needed
+    }
+    return course_to_book_id.get(course.base_course, 28)
+
+
+class StudyCluesQueryRequest(BaseModel):
+    query: str
+    conversation_id: Optional[int] = -1
+    coachMode: Optional[bool] = False
+
+
+@router.post("/studyclues_query")
+async def studyclues_query(
+    request_data: StudyCluesQueryRequest,
+    user=Depends(auth_manager),
+    response_class=JSONResponse,
+):
+    """Proxy a student query to StudyClues and return the response payload."""
+
+    api_base_domain = getattr(
+        settings,
+        "studyclues_api_base_url",
+        "https://api.demo.learningclues.com/",
+    )
+    query_studyclues_post_url = f"{api_base_domain.rstrip('/')}/studyclues/query"
+
+    # Maybe cache the user_id for StudyClues in the future in Redis
+    runestone_login_url = f"{api_base_domain}/auth/runestone_login"
+    params = {"runestone_username": user.username}
+    response = requests.get(runestone_login_url, params=params)
+    if response.status_code != 200:
+        rslogger.error(
+            f"StudyClues login request failed with status {response.status_code}: {response.text}"
+        )
+        return make_json_response(
+            status=502,
+            detail={
+                "success": False,
+                "message": "StudyClues login request failed",
+                "status_code": response.status_code,
+            },
+        )
+    data = response.json()
+    lc_user = data.get("user_id")
+
+    course = await fetch_course(user.course_name)
+    book_id = get_studyclues_book_id(course)
+    studyclues_params = {
+        "course_id": book_id,  # todo: make this dynamic based on the basecourse
+        "query": request_data.query,
+        "num_passages": 20,
+        "dry_run": False,
+        "user_id": lc_user,
+        "conversation_id": request_data.conversation_id,
+        "coach_mode": request_data.coachMode,
+        "source_filter": "GITHUB_FILE",
+    }
+
+    try:
+        with requests.Session() as session:
+            upstream_response = session.post(
+                query_studyclues_post_url,
+                json=studyclues_params,
+                timeout=30,
+            )
+            upstream_response.raise_for_status()
+            studyclues_response = upstream_response.json()
+    except requests.RequestException as err:
+        rslogger.error(f"StudyClues request failed: {err}")
+        return make_json_response(
+            status=502,
+            detail={"success": False, "message": "StudyClues request failed"},
+        )
+    except ValueError:
+        rslogger.error("StudyClues returned non-JSON response")
+        return make_json_response(
+            status=502,
+            detail={"success": False, "message": "Invalid StudyClues response"},
+        )
+
+    conversation_id = studyclues_response.get(
+        "conversation_id", request_data.conversation_id
+    )
+    return make_json_response(
+        detail={"response": studyclues_response, "conversation_id": conversation_id}
+    )
 
 
 @router.post("/update_submit")
@@ -257,11 +391,10 @@ async def doAssignment(
 
     deadline_exception = await check_for_exceptions(user, assignment_id)
 
-    if (
-        assignment.visible == "F"
-        or assignment.visible is None
-        or assignment.visible == False  # noqa: E712
-    ):
+    # Check if assignment is visible to students based on visible, visible_on, and hidden_on
+
+    if not is_assignment_visible_to_students(assignment):
+        # Allow access for instructors and students with exceptions
         if not (
             await is_instructor(request)
             or deadline_exception.visible
@@ -548,6 +681,7 @@ async def doAssignment(
         latex_preamble_dict=preambles,
         wp_imports=get_webpack_static_imports(course),
         settings=settings,
+        course_attrs=course_attrs,
     )
     response = templates.TemplateResponse(
         "assignment/student/doAssignment.html", context

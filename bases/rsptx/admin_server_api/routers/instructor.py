@@ -378,6 +378,7 @@ async def get_course_settings(
         "enable_compare_me": course_attrs.get("enable_compare_me", "false"),
         "show_points": course_attrs.get("show_points") == "true",
         "groupsize": course_attrs.get("groupsize", "3"),
+        "enable_async_llm_modes": course_attrs.get("enable_async_llm_modes", "false"),
     }
 
     return templates.TemplateResponse("admin/instructor/course_settings.html", context)
@@ -1081,6 +1082,7 @@ async def _copy_one_assignment(
             course=target_course.id,
             name=old_assignment.name,
             duedate=due_date,
+            updated_date=datetime.datetime.now(),
             description=old_assignment.description,
             points=old_assignment.points,
             threshold_pct=old_assignment.threshold_pct,
@@ -1255,9 +1257,7 @@ async def post_create_course_page(
 
         # if invoice is true then we need to create an invoice for the course
         if invoice == "true":
-            res = await create_invoice_request(
-                user.username, projectname, 0.0,  user.email
-            )
+            await create_invoice_request(user.username, projectname, 0.0, user.email)
         # Copy attributes from base course
         bc = await fetch_course(coursetype)
         attrs = await fetch_all_course_attributes(bc.id)

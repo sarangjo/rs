@@ -61,7 +61,10 @@ export default class ShortAnswer extends RunestoneBase {
         this.fieldSet = document.createElement("fieldset");
         this.newForm.appendChild(this.fieldSet);
         this.firstLegendDiv = document.createElement("div");
-        this.firstLegendDiv.innerHTML = this.question;
+        // move contents to new div, keeping any event listeners
+        while (this.origElem.firstChild) {
+            this.firstLegendDiv.appendChild(this.origElem.firstChild);
+        }
         this.firstLegendDiv.classList.add("journal-question");
         this.firstLegendDiv.classList.add("exercise-statement");
         this.fieldSet.appendChild(this.firstLegendDiv);
@@ -249,12 +252,16 @@ export default class ShortAnswer extends RunestoneBase {
         if (len > 0) {
             var ex = localStorage.getItem(this.localStorageKey());
             if (ex !== null) {
+                let error = false;
                 try {
                     var storedData = JSON.parse(ex);
                     answer = storedData.answer;
                 } catch (err) {
                     // error while parsing; likely due to bad value stored in storage
-                    console.log(err.message);
+                    console.log(`Error parsing stored shortanswer data for ${this.divid}: ${err.message}`);
+                    error = true;
+                }
+                if (error || storedData.timestamp < eBookConfig.termStartDate) {
                     localStorage.removeItem(this.localStorageKey());
                     return;
                 }

@@ -22,6 +22,7 @@ import json
 import uuid
 import os
 import tldextract
+from zoneinfo import ZoneInfo
 
 # Third-party imports
 # -------------------
@@ -42,6 +43,7 @@ import jwt
 # -------------------
 from rsptx.db.models import (
     AuthUserValidator,
+    Courses,
     CoursesValidator,
     Lti1p3Conf,
     Lti1p3User,
@@ -77,6 +79,7 @@ from rsptx.db.crud import (
     fetch_instructor_courses,
     validate_user_credentials,
 )
+from rsptx.db.crud.assignment import is_assignment_visible_to_students
 
 from rsptx.configuration import settings
 from rsptx.logging import rslogger
@@ -445,7 +448,10 @@ async def launch(request: Request):
                 status_code=400, detail=f"Assignment {lineitem_assign_id} not found"
             )
 
-        if not rs_assign.visible and not message_launch.check_teacher_access():
+        if (
+            not is_assignment_visible_to_students(rs_assign)
+            and not message_launch.check_teacher_access()
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=f"Assignment {rs_assign.name} is not open for students",
@@ -457,7 +463,7 @@ async def launch(request: Request):
         # make sure RS assignment is up to date (e.g. end date)
         course_attributes = await fetch_all_course_attributes(course.id)
         await update_rsassignment_from_lti(
-            rs_assign, assign_lineitem, course_attributes
+            rs_assign, assign_lineitem, course_attributes, course
         )
 
         # start redirect to assignment
@@ -504,14 +510,34 @@ async def update_lti_assignment_record(
 
 
 async def update_rsassignment_from_lti(
-    assign: AssignmentValidator, line_item: LineItem, course_attributes: dict
+    assign: AssignmentValidator,
+    line_item: LineItem,
+    course_attributes: dict,
+    course: Courses,
 ) -> AssignmentValidator:
     """
     Update a runestone assignment from LTI data.
     """
     try:
         lms_due_string = line_item.get_end_date_time()
-        lms_due = datetime.datetime.fromisoformat(lms_due_string)
+        rslogger.info(
+            f"LTI1p3 - Received {lms_due_string} for assignment {assign.name}"
+        )
+
+        # Parse ISO datetime. Normalize trailing Z so fromisoformat can parse UTC.
+        normalized_due_string = (
+            lms_due_string.replace("Z", "+00:00")
+            if lms_due_string.endswith("Z")
+            else lms_due_string
+        )
+        lms_due = datetime.datetime.fromisoformat(normalized_due_string)
+
+        # If LMS provided timezone info and course has a timezone, convert to course local time.
+        if lms_due.tzinfo is not None and course.timezone:
+            lms_due = lms_due.astimezone(ZoneInfo(course.timezone))
+            rslogger.info(
+                f"LTI1p3 - Converted to {lms_due} in timezone {course.timezone}"
+            )
         lms_due = lms_due.replace(tzinfo=None)
         if (
             lms_due is not None
@@ -874,10 +900,19 @@ async def dynamic_link_entry(request: Request):
     assignments.sort(key=lambda a: a.name)
     assignments.sort(key=lambda a: a.duedate)
 
-    # all lineitems in the LMS
-    ags = message_launch.get_ags()
-    l_items = await ags.get_lineitems()
+    try:
+        # all lineitems in the LMS - may be rejected if course is closed in LMS
+        ags = message_launch.get_ags()
+        l_items = await ags.get_lineitems()
+    except LtiServiceException as e:
+        rslogger.error(f"LTI1p3 - Error accessing course line items: {e}")
+        raise HTTPException(
+            status_code=422,
+            detail="This course appears to be closed in your Learning Management System.",
+        )
+
     l_items.sort(key=lambda li: li.get("label"))
+
     # build lookup dicts for line items
     l_items_resourceId_dict = {li.get("resourceId"): li for li in l_items}
     l_items_label_dict = {li.get("label"): li for li in l_items}
@@ -1112,7 +1147,9 @@ async def assign_select(launch_id: str, request: Request, course=None):
                 )
                 await ags.update_lineitem(line_item)
                 # update RS due date
-                await update_rsassignment_from_lti(assign, line_item, course_attributes)
+                await update_rsassignment_from_lti(
+                    assign, line_item, course_attributes, course
+                )
     deep_link = message_launch.get_deep_link()
     response_html = deep_link.output_response_form(response_list)
     response = HTMLResponse(content=response_html, status_code=200)

@@ -71,7 +71,11 @@ from rsptx.db.crud import (
     delete_datafile,
 )
 from rsptx.db.crud.question import validate_question_name_unique, copy_question
-from rsptx.db.crud.assignment import add_assignment_question, delete_assignment
+from rsptx.db.crud.assignment import (
+    add_assignment_question,
+    delete_assignment,
+    is_assignment_visible_to_students,
+)
 from rsptx.auth.session import auth_manager, is_instructor
 from rsptx.templates import template_folder
 from rsptx.configuration import settings
@@ -157,11 +161,7 @@ async def review_peer_assignment(
         )
         return RedirectResponse("/runestone/peer/instructor.html")
 
-    if (
-        assignment.visible == "F"
-        or assignment.visible is None
-        or assignment.visible == False  # noqa: E712
-    ):
+    if not is_assignment_visible_to_students(assignment):
         if not user_is_instructor:
             rslogger.error(
                 f"Attempt to access invisible assignment {assignment_id} by {user.username}"
@@ -357,7 +357,7 @@ async def get_assignment_gb(
 
     names = {}
     for ix, row in pt.iterrows():
-        if type(row.first_name) is str and type(row.last_name) is str:
+        if isinstance(row.first_name, str) and isinstance(row.last_name, str):
             names[row.username] = row.first_name + " " + row.last_name
 
     # pt = pt.drop(columns=["username"], axis=1)
@@ -430,10 +430,10 @@ async def new_assignment(
     new_assignment = AssignmentValidator(
         **request_data.model_dump(),
         course=course.id,
-        visible=False,
         released=True,
         from_source=False,
         current_index=0,
+        updated_date=canonical_utcnow(),
     )
     try:
         res = await create_assignment(new_assignment)
@@ -664,9 +664,9 @@ async def get_assignment_questions(
 
         if aq["reading_assignment"] == True:  # noqa: E712
             try:
-                aq["numQuestions"] = countd[q["chapter"]][q["subchapter"]]
+                aq["numQuestions"] = max(countd[q["chapter"]][q["subchapter"]], 1)
             except KeyError:
-                aq["numQuestions"] = 0
+                aq["numQuestions"] = 1
 
         # augment the assignment question with additional question data
         aq["name"] = q["name"]
@@ -966,6 +966,16 @@ async def get_builder(
 @router.get("/grader")
 async def get_grader(
     request: Request, user=Depends(auth_manager), response_class=HTMLResponse
+):
+    return await get_builder(request, "/grader", user, response_class)
+
+
+@router.get("/grader/{subpath:path}")
+async def get_grader_subpath(
+    request: Request,
+    subpath: str,
+    user=Depends(auth_manager),
+    response_class=HTMLResponse,
 ):
     return await get_builder(request, "/grader", user, response_class)
 
@@ -1387,6 +1397,25 @@ async def add_api_token(
         )
 
 
+@router.get("/has_api_key")
+@instructor_role_required()
+@with_course()
+async def has_api_key(request: Request, user=Depends(auth_manager), course=None):
+    """Return whether the course has at least one API token configured and whether async LLM modes are enabled."""
+    tokens = await fetch_all_api_tokens(course.id)
+    course_attrs = await fetch_all_course_attributes(course.id)
+    async_llm_modes_enabled = (
+        course_attrs.get("enable_async_llm_modes", "false") == "true"
+    )
+    return make_json_response(
+        status=status.HTTP_200_OK,
+        detail={
+            "has_api_key": len(tokens) > 0,
+            "async_llm_modes_enabled": async_llm_modes_enabled,
+        },
+    )
+
+
 @router.get("/add_token")
 @instructor_role_required()
 @with_course()
@@ -1505,11 +1534,17 @@ async def validate_question_name(
 
 @router.post("/copy_question")
 @instructor_role_required()
+@with_course()
 async def copy_question_endpoint(
-    request: Request, request_data: CopyQuestionRequest, user=Depends(auth_manager)
+    request: Request,
+    request_data: CopyQuestionRequest,
+    user=Depends(auth_manager),
+    course=None,
 ):
     """
     Copy a question with a new name and owner.
+    The user making the copy becomes the owner and author.
+    The base_course is updated to the current user's course base_course.
     Optionally copy it to an assignment as well.
     """
     try:
@@ -1523,6 +1558,7 @@ async def copy_question_endpoint(
             new_owner=user.username,
             assignment_id=assignment_id,
             htmlsrc=request_data.htmlsrc,
+            new_base_course=course.base_course,
         )
 
         return make_json_response(

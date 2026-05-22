@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from .routers import student
 from .routers import instructor
 from .routers import peer
-from rsptx.configuration import settings
+from .routers import grader
 from rsptx.exceptions.core import add_exception_handlers
 from rsptx.logging import rslogger
 from rsptx.templates import template_folder
@@ -43,8 +43,10 @@ app = FastAPI(**kwargs)  # type: ignore
 # maybe we could use this inside the books router but I'm not sure...
 # There is so much monkey business with nginx routing of various things with /static/ in the
 # path that it is clearer to mount this at something NOT called static
-# WARNING this works in a dev build but does not work in production.  Need to supply a path to a folder containing the static files.  I imagine the same is true for the templates!  The build script should use  pkg_resources to find the files and copy them.
-# staticdir = pkg_resources.resource_filename("book_server_api", "staticAssets")
+# WARNING this works in a dev build but does not work in production. Need to
+# supply a path to a folder containing the static files. The same is likely
+# true for templates. The build script should resolve package paths (for
+# example via importlib.resources) and copy them.
 base_dir = pathlib.Path(template_folder)
 app.mount(
     "/staticAssets", StaticFiles(directory=base_dir / "staticAssets"), name="static"
@@ -56,6 +58,7 @@ rslogger.info(f"React dir: {reactdir}")
 auth_manager.attach_middleware(app)
 
 app.include_router(student.router)
+app.include_router(grader.router)
 app.include_router(instructor.router)
 app.include_router(peer.router)
 

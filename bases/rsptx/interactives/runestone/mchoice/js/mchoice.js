@@ -346,13 +346,17 @@ export default class MultipleChoice extends RunestoneBase {
         var len = localStorage.length;
         if (len > 0) {
             var ex = localStorage.getItem(this.localStorageKey());
+            let error = false;
             if (ex !== null) {
                 try {
                     storedData = JSON.parse(ex);
                     answers = storedData.answer.split(",");
                 } catch (err) {
                     // error while parsing; likely due to bad value stored in storage
-                    console.log(err.message);
+                    console.log(`Error parsing stored mchoice data for ${this.divid}: ${err.message}`);
+                    error = true;
+                }
+                if (error || storedData.timestamp < eBookConfig.termStartDate) {
                     localStorage.removeItem(this.localStorageKey());
                     return;
                 }
@@ -546,6 +550,7 @@ export default class MultipleChoice extends RunestoneBase {
                 `✖️ You gave ${numGiven} ${answerStr} and got ${numCorrect} correct of ${numNeeded} needed.<ol type="A">${feedbackText}</ul>`;
             this.feedBackDiv.className = "alert alert-danger";
         }
+        this.queueMathJax(this.feedBackDiv);
     }
 
     processMCMFSubmission(logFlag) {
@@ -627,6 +632,7 @@ export default class MultipleChoice extends RunestoneBase {
             this.feedBackDiv.innerHTML = "✖️ " + feedbackText;
             this.feedBackDiv.className = "alert alert-danger";
         }
+        this.queueMathJax(this.feedBackDiv);
     }
     enableMCComparison() {
         if (eBookConfig.enableCompareMe) {
