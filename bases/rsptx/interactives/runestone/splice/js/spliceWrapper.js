@@ -9,7 +9,7 @@ export class SpliceWrapper extends RunestoneBase {
     initSplice() {
         // SPLICE Events
         window.addEventListener("message", async (event) => {
-            
+
             var sourceIframe = this.sendingIframe(event);
             console.log(`SpliceWrapper: received message subject: ${event.data.subject} from iframe: ${sourceIframe ? sourceIframe.id : "unknown"}`);
             if (event.data.subject == "SPLICE.reportScoreAndState") {
@@ -28,9 +28,9 @@ export class SpliceWrapper extends RunestoneBase {
                 let jwt = basicParseJwt(msgdata.jwt);
                 console.log(
                     "Result received from frame " +
-                        msgdata.frame_id +
-                        " with score " +
-                        jwt.score
+                    msgdata.frame_id +
+                    " with score " +
+                    jwt.score
                 );
                 // todo send score to server
                 // does MOM have a way to get the state?
@@ -109,6 +109,7 @@ export class SpliceWrapper extends RunestoneBase {
                     div_id: location,
                     course: eBookConfig.course,
                     event: "SPLICE.getState",
+                    sid: "teststudent1",
                 }),
             });
             if (!response.ok) {
@@ -158,10 +159,10 @@ export class SpliceWrapper extends RunestoneBase {
         });
     }
     // these stubs are not implemented, but are required by the RunestoneBase class
-    checkLocalStorage() {}
-    setLocalStorage() {}
-    restoreAnswers() {}
-    disableInteraction() {}
+    checkLocalStorage() { }
+    setLocalStorage() { }
+    restoreAnswers() { }
+    disableInteraction() { }
 }
 
 function basicParseJwt(token) {
