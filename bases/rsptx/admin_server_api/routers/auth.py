@@ -18,6 +18,7 @@ from rsptx.db.crud import (
     fetch_courses_by_institution,
     fetch_courses_for_user,
     fetch_instructor_courses,
+    fetch_last_course_access,
     fetch_library_books,
     fetch_user,
     fetch_user_by_email,
@@ -43,6 +44,7 @@ _REGISTER = "/admin/auth/register"
 _COURSES = "/admin/auth/courses"
 _MY_COURSES = "/admin/auth/my_courses"
 _PROFILE = "/admin/auth/profile"
+_DONATE = "/admin/auth/donate"
 
 
 def _verify_password(stored: str, plain: str) -> bool:
@@ -316,7 +318,43 @@ async def courses_post(
         user.id, {"course_name": course.course_name, "course_id": course.id}
     )
 
+    # When a student registers for a new course, invite them to support
+    # Runestone. We don't ask again once they've donated.
+    if not already_enrolled and not user.donated:
+        return RedirectResponse(_DONATE, status_code=status.HTTP_302_FOUND)
+
     return RedirectResponse("/ns/course/index", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Donate (shown after a student registers for a new course)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/donate", response_class=HTMLResponse)
+async def donate_page(request: Request):
+    user = await _current_user(request)
+    if not _user_exists(user):
+        return RedirectResponse(
+            f"{_LOGIN}?next={_DONATE}", status_code=status.HTTP_302_FOUND
+        )
+    return templates.TemplateResponse(
+        "admin/auth/donate.html",
+        {"request": request, "user": user},
+    )
+
+
+@router.post("/donate/mark")
+async def donate_mark(request: Request):
+    """Record that the current user has donated so we stop asking.
+
+    Called from the donate page after a successful PayPal capture.
+    """
+    user = await _current_user(request)
+    if _user_exists(user):
+        await update_user(user.id, {"donated": True})
+        return {"ok": True}
+    return {"ok": False}
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +372,12 @@ async def _build_my_courses_context(user):
     for ic in await fetch_instructor_courses(user.id):
         instructor_course_ids.add(ic.course)
 
+    # Most-recent access time per course in the last 30 days. Used both to flag
+    # recently-used courses (with a ⏱️ in the template) and to sort the lists.
+    access_dict = await fetch_last_course_access(
+        user.username, datetime.datetime.now() - timedelta(days=30)
+    )
+
     open_books = []
     class_courses = []
     for course in enrolled:
@@ -343,6 +387,7 @@ async def _build_my_courses_context(user):
             "course_name": course.course_name,
             "is_instructor": is_instructor,
             "is_active": is_active,
+            "recently_used": course.course_name in access_dict,
             "id": course.id,
         }
         if course.base_course == course.course_name:
@@ -350,9 +395,17 @@ async def _build_my_courses_context(user):
         else:
             class_courses.append(entry)
 
-    # Sort: active first, then alphabetical
+    # Sort by most-recently-accessed first, then alphabetically. Courses used
+    # in the last 30 days are ordered by recency (newest at the top); courses
+    # not accessed in that window fall back to alphabetical order. This mirrors
+    # the legacy web2py `courses` controller behavior.
+    long_ago = datetime.datetime(1970, 1, 1)
+
     def _sort_key(c):
-        return (0 if c["is_active"] else 1, c["course_name"].lower())
+        last_acc = access_dict.get(c["course_name"], long_ago)
+        # Negate the timestamp so more-recent access sorts first while we keep
+        # the overall (ascending) sort and break ties alphabetically.
+        return (-last_acc.timestamp(), c["course_name"].lower())
 
     open_books.sort(key=_sort_key)
     class_courses.sort(key=_sort_key)
