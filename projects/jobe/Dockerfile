@@ -66,7 +66,7 @@ RUN ln -snf /usr/share/zoneinfo/"$TZ" /etc/localtime && \
     vim \
     wget
 
-RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas requests altair qiskit && \
+RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas requests altair qiskit qiskit_aer && \
     pylint --reports=no --score=n --generate-rcfile > /etc/pylintrc && \
     ln -sf /proc/self/fd/1 /var/log/apache2/access.log && \
     ln -sf /proc/self/fd/1 /var/log/apache2/error.log && \
@@ -81,6 +81,7 @@ RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas 
     echo '<!DOCTYPE html><html lang="en"><title>Jobe</title><h1>Jobe</h1></html>' > /var/www/html/index.html && \
     git clone https://github.com/RunestoneInteractive/jobe.git /var/www/html/jobe && \
     apache2ctl start && \
+    sleep 10 && \
     cd /var/www/html/jobe && \
     /usr/bin/python3 /var/www/html/jobe/install && \
     chown -R ${APACHE_RUN_USER}:${APACHE_RUN_GROUP} /var/www/html && \

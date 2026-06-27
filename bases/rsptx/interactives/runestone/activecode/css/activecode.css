@@ -78,6 +78,7 @@
 
 .ac_output pre {
     background-color: var(--ac-out-background);
+    font-family: 'Courier New', Courier, monospace;
 }
 
 .python_check_results pre,
@@ -279,22 +280,22 @@
 
 /* CodeTailor-related CSS START */
 .scaffolding-container {
-  margin-right: 20px;
-  position: fixed;
-  right: 0px;
-  max-height: 100%;
-  overflow-y: scroll;
-  top: 0px;
-  padding-top: 60px;
-  z-index: 999;
+    margin-right: 20px;
+    position: fixed;
+    right: 0px;
+    max-height: 100%;
+    overflow-y: scroll;
+    top: 0px;
+    padding-top: 60px;
+    z-index: 999;
 }
 
 .scaffolding-container .ac_actions {
-  display: none;
+    display: none;
 }
 
 .scaffolding-container.hidden {
-  display: none;
+    display: none;
 }
 
 .parsons-scaffolding {
@@ -306,11 +307,11 @@
     box-shadow: 10px 5px 5px gray;
 }
 
-.scaffolding-loading-prompt.loading{
+.scaffolding-loading-prompt.loading {
     display: block;
 }
 
-.scaffolding-loading-prompt{
+.scaffolding-loading-prompt {
     display: none;
     text-align: center;
     background-color: #ffebae;
@@ -326,8 +327,8 @@
 
 /* open CodeTailor*/
 button.parsons-scaffolding-btn {
-  background-color: #ED7014 !important;
-  color: white !important;
+    background-color: #ED7014 !important;
+    color: white !important;
 }
 
 button.reopen-help-btn {
@@ -351,7 +352,13 @@ button.reopen-help-btn {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
+
 /* CodeTailor-related CSS END */
