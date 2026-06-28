@@ -4,6 +4,7 @@ import JUnitTestParser from "./extractUnitResults-JUnit.js";
 import DoctestTestParser from "./extractUnitResults-Doctest.js";
 import "../../codelens/js/pytutor-embed.bundle.js";
 import { base64encode } from "byte-base64";
+import ImageTagParser from "./extractImage-Python.js";
 
 export default class LiveCode extends ActiveCode {
     constructor(opts) {
@@ -104,11 +105,11 @@ export default class LiveCode extends ActiveCode {
                 let runResults = await res.json();
                 this.processJobeResponse(runResults);
             } else {
-                if(this.hasUnitTests()) {
+                if (this.hasUnitTests()) {
                     console.log(`IO tests are not supported with unit tests. They will be ignored in ${this.divid}`);
                 } else {
                     let ioResults = [];
-                    for(let iotest of this.iotests) {
+                    for (let iotest of this.iotests) {
                         let spec = JSON.parse(this.json_runspec);
                         spec.run_spec.input = iotest.input;
                         this.json_runspec = JSON.stringify(spec);
@@ -249,14 +250,14 @@ export default class LiveCode extends ActiveCode {
             let datafiles = this.datafiles.split(",");
             for (let d of datafiles) {
                 let datafileFileName = d.trim();
-                allFilesRaw.push({filename:datafileFileName, type: "datafile"});
+                allFilesRaw.push({ filename: datafileFileName, type: "datafile" });
             }
         }
         if (this.additional_files != undefined) {
             let additionalFiles = this.additional_files.split(",");
             for (let f of additionalFiles) {
                 let addFileId = f.trim();
-                allFilesRaw.push({acid:addFileId});
+                allFilesRaw.push({ acid: addFileId });
             }
         }
 
@@ -286,7 +287,7 @@ export default class LiveCode extends ActiveCode {
                 } else {
                     // if file element is editable textarea, file.value is defined and has the current contents
                     // otherwise rely on static contents
-                    if(fileElement.value)
+                    if (fileElement.value)
                         content = fileElement.value;
                     else
                         content = fileElement.textContent;
@@ -509,7 +510,13 @@ export default class LiveCode extends ActiveCode {
                         this.divid
                     );
                     $(odiv).html(this.parsedOutput.stdout);
-                } else {
+                } else if (this.language === "python3") {
+                    this.parsedOutput = new ImageTagParser(
+                        result.stdout,
+                        this.divid
+                    );
+                    $(odiv).html(this.parsedOutput.stdout);
+                } {
                     let output = result.stdout ? result.stdout : "";
                     $(odiv).html(output);
                 }
@@ -531,7 +538,7 @@ export default class LiveCode extends ActiveCode {
                 break;
             case 12: // run time error
                 // special case for compile-only request when using c/cpp
-                if(
+                if (
                     (this.language === "cpp" || this.language === "c")
                     && result.stderr.includes("Permission denied")
                     && this.compileargs && this.compileargs.includes("-c")
@@ -595,7 +602,7 @@ export default class LiveCode extends ActiveCode {
         this.errinfo = null;
         // trim any trailing whitespace so invisible extra newline doesn't fail test
         // then trim trailing whitespace on each remaining line
-        const trimLines = (s) => s.trimEnd().split("\n").map( s => s.trimEnd()).join("\n")
+        const trimLines = (s) => s.trimEnd().split("\n").map(s => s.trimEnd()).join("\n")
         for (let result of resultList) {
             const produced = trimLines(result.stdout);
             const desired = trimLines(result.test.out);
@@ -621,7 +628,7 @@ export default class LiveCode extends ActiveCode {
             tbl.appendChild(tr);
             switch (result.outcome) {
                 case 15:
-                    if(produced === desired) {
+                    if (produced === desired) {
                         passedTests++;
                         td4.innerHTML = $.i18n("msg_activecode_passed");
                         td4.classList.add("ac-feedback-pass");
