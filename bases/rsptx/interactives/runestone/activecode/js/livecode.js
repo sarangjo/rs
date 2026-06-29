@@ -516,10 +516,13 @@ export default class LiveCode extends ActiveCode {
                         this.divid
                     );
                     $(odiv).html(this.parsedOutput.stdout);
-                } {
+                } else {
                     let output = result.stdout ? result.stdout : "";
                     $(odiv).html(output);
                 }
+
+                this.queueMathJax(odiv);
+
                 if (this.hasUnitTests() || this.iotests) {
                     if (this.parsedOutput.pct === undefined) {
                         this.parsedOutput.pct =

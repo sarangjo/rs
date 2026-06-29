@@ -66,7 +66,7 @@ RUN ln -snf /usr/share/zoneinfo/"$TZ" /etc/localtime && \
     vim \
     wget
 
-RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas requests altair qiskit qiskit_aer && \
+RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas requests altair qiskit qiskit_aer matplotlib && \
     pylint --reports=no --score=n --generate-rcfile > /etc/pylintrc && \
     ln -sf /proc/self/fd/1 /var/log/apache2/access.log && \
     ln -sf /proc/self/fd/1 /var/log/apache2/error.log && \
@@ -87,7 +87,9 @@ RUN python3 -m pip install --break-system-packages pylint beautifulsoup4 pandas 
     chown -R ${APACHE_RUN_USER}:${APACHE_RUN_GROUP} /var/www/html && \
     apt-get -y autoremove --purge && \
     apt-get -y clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /tmp/mpl/config
+ENV MPLCONFIGDIR /tmp/mpl/config
 
 # Prefer gcc-14 and g++-14
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 60 && \
