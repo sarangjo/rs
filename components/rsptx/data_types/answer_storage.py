@@ -35,6 +35,7 @@ QTYPE_TO_TABLE = {
     "splice": "splice_answers",
     "doenet": "splice_answers",
     "iframe": "splice_answers",
+    "dual": "splice_answers"
 }
 
 #: Answer tables with no ``correct`` column: a row records that the student
@@ -47,7 +48,7 @@ CODE_TABLE_TYPES = {"activecode", "actex", "codelens"}
 #: Question types rendered as a third-party activity inside an iframe. Their
 #: stored "answer" is an opaque provider state blob rather than something a
 #: human can read, so the grader shows the activity itself instead of the text.
-IFRAME_QUESTION_TYPES = {"splice", "doenet", "iframe"}
+IFRAME_QUESTION_TYPES = {"splice", "doenet", "iframe", "dual"}
 
 UNITTEST_TABLE = "unittest_answers"
 

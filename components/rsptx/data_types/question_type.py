@@ -73,6 +73,12 @@ class QuestionType(Enum):
         "Embed an external interactive activity using SPLICE",
     )
 
+    DUAL = (
+        "dual",
+        "SPLICE",
+        "Embed an external interactive activity using SPLICE",
+    )
+
     QUIZLY = (
         "quizly",
         "Quizly",

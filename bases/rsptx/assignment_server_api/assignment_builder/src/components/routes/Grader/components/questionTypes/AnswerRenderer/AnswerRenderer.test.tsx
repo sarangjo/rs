@@ -83,7 +83,7 @@ describe("AnswerRenderer dispatch (no interactive htmlsrc)", () => {
 });
 
 describe("AnswerRenderer iframe-embedded question types", () => {
-  it.each(["splice", "doenet", "iframe"])(
+  it.each(["splice", "doenet", "iframe", "dual"])(
     "routes %s to the iframe view rather than dumping its state blob",
     (questionType) => {
       renderFor(questionType, { htmlsrc: "<div><iframe src='/a.html'></iframe></div>" });

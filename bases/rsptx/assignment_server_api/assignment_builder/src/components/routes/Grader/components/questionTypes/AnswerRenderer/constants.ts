@@ -16,4 +16,4 @@ export const RUNESTONE_GRADER_TYPES = new Set([
 ]);
 
 /** Third-party activities embedded in an iframe rather than Runestone components. */
-export const IFRAME_TYPES = new Set(["splice", "doenet", "iframe"]);
+export const IFRAME_TYPES = new Set(["splice", "doenet", "iframe", "dual"]);

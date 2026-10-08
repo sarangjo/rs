@@ -23,6 +23,7 @@ from rsptx.grading_helpers.answer_tables import (
         ("splice", "splice_answers"),
         ("doenet", "splice_answers"),
         ("iframe", "splice_answers"),
+        ("dual", "splice_answers"),
         ("webwork", "webwork_answers"),
         ("mchoice", "mchoice_answers"),
         ("activecode", "unittest_answers"),
